@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مستخرج بيانات الايسر</title>
+
+
+    <!-- Tabulator CSS -->
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <script type="text/javascript" src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+
+    <!-- SheetJS -->
+    <script type="text/javascript" src="https://oss.sheetjs.com/sheetjs/xlsx.full.min.js"></script>
+
+    <!-- jsPDF and jsPDF-AutoTable -->
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.20/jspdf.plugin.autotable.min.js"></script>
+
+
+ <!-- Arabic Font <script type="text/javascript" src="./font.js"></script> to be added later -->
+
+    <style>
+        body {
+            font-family: 'Times New Roman' , serif;
+          
+            text-align: center;
+            padding: 20px;
+            background-color: #f4f4f4;
+            direction: rtl;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        textarea {
+            width: 90%;
+            max-width: 600px;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        .table-container {
+            width: 100%;
+            max-width: 800px;
+            margin: 20px auto;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #example-table, #spreadsheet-table {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>استخراج البيانات الخاصة بالطلاب</h1>
+
+    <div>
+        <label for="urlInput">قم بلصق البيانات المستخرجة من التطبيق</label><br>
+        <textarea id="urlInput" rows="4" placeholder="قم بلصق البيانات هنا"></textarea>
+    </div>
+    <button id="decodeButton">استخراج البيانات</button>
+
+    <div class="table-container">
+        <h2>جدول</h2>
+        <div id="example-table"></div>
+        <button onclick="exportTable('xlsx')">تصدير الى ملف اكسل</button>
+      <!-- <button onclick="exportTable('pdf')">تصدير الى PDF</button> -->
+        <button onclick="copyTableData('example-table')">نسخ الى الحافظة</button>
+    </div>
+
+    <div class="table-container">
+        <h2> "اكسل"جدول بيانات</h2>
+        <div id="spreadsheet-table"></div>
+    </div>
+
+    <script>
+
+
+        document.addEventListener("DOMContentLoaded", function () {
+            const decodeButton = document.getElementById("decodeButton");
+
+            decodeButton.addEventListener("click", function () {
+                const urlInput = document.getElementById("urlInput").value.trim();
+
+                if (!urlInput) {
+                    alert("Please paste an encoded URL.");
+                    return;
+                }
+
+                // Extract and Decode URL Data
+                const baseURL = "https://localhost/";
+                let encodedData = "";
+                if (urlInput.includes(baseURL)) {
+                    encodedData = urlInput.substring(urlInput.indexOf(baseURL) + baseURL.length);
+                } else {
+                    alert("Invalid URL format.");
+                    return;
+                }
+
+                let decodedData;
+                try {
+                    decodedData = decodeURIComponent(encodedData);
+                } catch (e) {
+                    alert("Error decoding URL data.");
+                    return;
+                }
+
+                // Convert Decoded String to Array
+                let dataValues;
+                try {
+                    dataValues = decodedData.replace(/[\[\]"]/g, '').split(',').map(item => item.trim());
+                } catch (e) {
+                    alert("Error processing URL data.");
+                    return;
+                }
+
+                // Convert Flat Array to Structured Objects
+                function convertArrayToObjects(arr) {
+                    let result = [];
+                    let tempObj = {};
+                    let index = 1;
+
+                    for (let i = 0; i < arr.length; i += 2) {
+                        let key = arr[i];
+                        let value = arr[i + 1];
+
+                        if (key === "اسم الطالب") {
+                            if (Object.keys(tempObj).length > 0) {
+                                result.push(tempObj);
+                            }
+                            tempObj = {};
+                        }
+
+                        tempObj[key] = value;
+                    }
+
+                    if (Object.keys(tempObj).length > 0) {
+                        result.push(tempObj);
+                    }
+
+                    return result;
+                }
+
+                let tableData = convertArrayToObjects(dataValues);
+
+                // Generate Column Headers Dynamically
+                const columnHeaders = Object.keys(tableData.length > 0 ? tableData[0] : {});
+
+                // Initialize Tabulator Table
+                new Tabulator("#example-table", {
+                    data: tableData,
+                    layout: "fitColumns",
+                    clipboard: true,
+                    columns: [
+                        { title: "#", field: "index", hozAlign: "center", width: 70, formatter: "rownum" },
+                        ...columnHeaders.map(header => ({ title: header, field: header, hozAlign: "center" }))
+                    ]
+                });
+
+
+               
+// Ensure tableData only contains plain objects without extra properties
+const cleanTableData = tableData.map(row => Object.assign({}, row));
+
+// Convert Data to Array of Arrays for Spreadsheet Mode
+const spreadsheetData = [
+    columnHeaders, // Header row
+    ...cleanTableData.map(row => columnHeaders.map(header => row[header] !== undefined ? row[header] : ""))
+];
+
+// Log to check the output
+console.log(spreadsheetData);
+
+
+
+
+
+                
+                // Initialize Spreadsheet Tabulator
+                new Tabulator("#spreadsheet-table", {
+                    spreadsheet:true,
+                    spreadsheetData: spreadsheetData,
+                    spreadsheetSheetTabs:true,
+                    rowHeader:{field:"_id", hozAlign:"center", headerSort:false},
+                    editTriggerEvent:"dblclick",
+                    selectableRangeColumns:true,
+    selectableRangeRows:true,
+    selectableRangeClearCells:true,
+     //enable range selection
+     selectableRange:1,
+    selectableRangeColumns:true,
+    selectableRangeRows:true,
+    selectableRangeClearCells:true,
+    
+    //configure clipboard to allow copy and paste of range format data
+    clipboard:true,
+    clipboardCopyStyled:false,
+    clipboardCopyConfig:{
+        rowHeaders:false,
+        columnHeaders:false,
+    },
+    clipboardCopyRowRange:"range",
+    clipboardPasteParser:"range",
+    clipboardPasteAction:"range",
+
+
+    rows:5,
+
+                    columns: columnHeaders.map(header => ({ title: header, field: header, editor: "input" }))
+                });
+            });
+        });
+
+
+        
+
+                // Export Function
+                function exportTable(type) {
+            let table = Tabulator.findTable("#example-table")[0];
+            if (!table) return alert("No table data available.");
+            
+            let fileName = "table_export";
+            if (type === "xlsx") {
+                table.download("xlsx", fileName + ".xlsx", { sheetName: "Table Data" });
+            } else if (type === "pdf") {
+                doc.addFileToVFS('Amiri-Regular.ttf', arabicFontBase64);
+                doc.addFont('Amiri-Regular.ttf', 'Amiri', 'normal');
+
+                table.download("pdf", fileName + ".pdf", { orientation: "portrait" });
+            }
+        }
+
+
+
+
+        // Copy to Clipboard Function
+        function copyTableData(tableId) {
+            let table = Tabulator.findTable(`#${tableId}`)[0];
+            if (!table) return alert("No data available.");
+            table.copyToClipboard();
+            alert("Table data copied to clipboard!");
+        }
+    </script>
+
+</body>
+</html>
+
+ 
